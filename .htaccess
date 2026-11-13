@@ -1,0 +1,11 @@
+RewriteEngine On
+
+# Если запрашиваемый файл или папка реально существуют — открываем их напрямую
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Иначе передаём путь как параметр code в файл redirect.php
+RewriteRule ^([a-zA-Z0-9_-]+)$ redirect.php?code=$1 [L,QSA]
+
+# Если введён адрес с недопустимыми символами, который не существует — показываем 404
+ErrorDocument 404 /404.php
