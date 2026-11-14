@@ -1,60 +1,58 @@
 <?php
 // Файл: index.php
-// Главная страница: отображение формы и обработка создания короткой ссылки
+// Главная страница: форма, QR-код и таблица последних ссылок с аналитикой кликов
 
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/functions.php';
 
-$error = null;          // Текст ошибки (если что-то пойдёт не так)
-$shortUrl = null;       // Готовая короткая ссылка для вывода пользователю
-$originalUrl = '';      // Переменная для сохранения введённого URL в поле формы
-$customCode = '';       // Переменная для сохранения введённого псевдонима
-$finalCode = '';        // Короткий код, который будет сохранён в базу
+$error = null;
+$shortUrl = null;
+$originalUrl = '';
+$customCode = '';
+$finalCode = '';
 
-// Проверяем, отправил ли пользователь форму (методом POST)
+// Определяем базовый адрес сайта (корректно работает и локально, и на Render через HTTPS)
+$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    or (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+$protocol = $isHttps ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost:8000';
+$baseUrl = $protocol . '://' . $host;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Получаем данные из формы и убираем случайные пробелы по краям через trim()
     $originalUrl = trim($_POST['url'] ?? '');
     $customCode  = trim($_POST['custom_code'] ?? '');
 
-    // 1. Проверяем корректность длинной ссылки
     $error = validateUrl($originalUrl);
 
-    // 2. Если ссылка корректна, разбираемся с коротким кодом
     if ($error === null) {
         if ($customCode !== '') {
-            // Пользователь указал свой псевдоним — проверяем его формат
             $error = validateCustomCode($customCode);
 
-            // Если формат правильный, проверяем, не занят ли этот псевдоним в базе
-            if ($error === null && isCodeTaken($pdo, $customCode)) {$error = 'Этот псевдоним уже занят. Пожалуйста, придумайте другой.';
+            if ($error === null && isCodeTaken($pdo, $customCode)) {
+                $error = 'Этот псевдоним уже занят. Пожалуйста, придумайте другой.';
             }
 
-            $finalCode =$customCode;
+            $finalCode = $customCode;
         } else {
-            // Пользователь не указал псевдоним — генерируем случайный уникальный код
             $finalCode = generateUniqueCode($pdo, 6);
         }
     }
 
-    // 3. Если никаких ошибок нет — сохраняем ссылку в базу данных
     if ($error === null) {
         try {
-            saveLink($pdo, $originalUrl,$finalCode);
+            saveLink($pdo, $originalUrl, $finalCode);
+            $shortUrl = $baseUrl . '/' . $finalCode;
 
-            // Определяем текущий адрес сайта (например, http://localhost:8000)
-            $protocol = (!empty($_SERVER['HTTPS']) &&$_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $host =$_SERVER['HTTP_HOST'] ?? 'localhost:8000';
-
-            // Собираем готовую короткую ссылку
-            $shortUrl =$protocol . '://' . $host . '/' .$finalCode;
-
-            // Очищаем поля формы после успешного создания
-            $originalUrl = '';$customCode = '';
-        } catch (PDOException $e) {$error = 'Произошла ошибка при сохранении ссылки. Попробуйте ещё раз.';
+            $originalUrl = '';
+            $customCode = '';
+        } catch (PDOException $e) {
+            $error = 'Произошла ошибка при сохранении ссылки. Попробуйте ещё раз.';
         }
     }
 }
+
+// Получаем последние 5 ссылок из базы данных для отображения в таблице
+$recentLinks = getRecentLinks($pdo, 5);
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -65,7 +63,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-    <!-- Фоновые анимированные сферы -->
     <div class="bg-shape shape-1"></div>
     <div class="bg-shape shape-2"></div>
 
@@ -73,25 +70,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="card">
             <div class="brand-header">
                 <div class="logo-badge" title="URL Shortener">
-                    <!-- Иконка звена ссылки -->
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                     </svg>
                 </div>
                 <h1>Сокращатель ссылок</h1>
-                <p class="subtitle">Превратите длинный веб-адрес в короткую и удобную ссылку за секунду</p>
+                <p class="subtitle">Превратите длинный веб-адрес в короткую ссылку с QR-кодом и статистикой</p>
             </div>
 
-            <!-- Вывод блока с ошибкой, если она возникла -->
             <?php if ($error !== null): ?>
                 <div class="alert alert-error">
                     <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
                 </div>
             <?php endif; ?>
 
-            <!-- Вывод готовой короткой ссылки после успешного создания -->
             <?php if ($shortUrl !== null): ?>
+                <?php
+                // Формируем ссылку на генерацию QR-кода (размер 140x140 пикселей)
+                $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=6&data=' . urlencode($shortUrl);
+                ?>
                 <div class="alert alert-success">
                     <p class="result-label">&#10024; Ваша короткая ссылка готова:</p>
                     <div class="result-box">
@@ -105,10 +103,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             Копировать
                         </button>
                     </div>
+
+                    <!-- Блок с QR-кодом -->
+                    <div class="qr-box">
+                        <img src="<?= htmlspecialchars($qrCodeUrl, ENT_QUOTES, 'UTF-8') ?>" alt="QR-код ссылки" class="qr-image" width="110" height="110">
+                        <div class="qr-info">
+                            <strong>QR-код для телефона</strong>
+                            <span>Наведите камеру смартфона, чтобы мгновенно открыть эту ссылку.</span>
+                        </div>
+                    </div>
                 </div>
             <?php endif; ?>
 
-            <!-- Форма создания короткой ссылки -->
             <form method="POST" action="/" novalidate>
                 <div class="form-group">
                     <label for="url">Длинная ссылка <span class="required">*</span></label>
@@ -141,6 +147,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span class="shrink-arrow arrow-right">&larr;</span>
                 </button>
             </form>
+
+            <!-- Секция недавно созданных ссылок и статистики кликов -->
+            <?php if (!empty($recentLinks)): ?>
+                <div class="recent-section">
+                    <div class="recent-header">
+                        <h2>Недавние ссылки</h2>
+                        <span class="recent-note">Обновите страницу после клика, чтобы увидеть рост счётчика</span>
+                    </div>
+                    <div class="recent-list">
+                        <?php foreach ($recentLinks as $item): ?>
+                            <?php $itemShortUrl = $baseUrl . '/' . $item['short_code']; ?>
+                            <div class="recent-item">
+                                <div class="recent-links-col">
+                                    <a href="<?= htmlspecialchars($itemShortUrl, ENT_QUOTES, 'UTF-8') ?>" target="_blank" class="recent-short">
+                                        /<?= htmlspecialchars($item['short_code'], ENT_QUOTES, 'UTF-8') ?>
+                                    </a>
+                                    <span class="recent-original" title="<?= htmlspecialchars($item['original_url'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars($item['original_url'], ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                </div>
+                                <div class="recent-stats-col">
+                                    <span class="clicks-badge" title="Количество переходов по ссылке">
+                                        &#128065; <?= (int)$item['clicks'] ?> кликов
+                                    </span>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
     </main>
 

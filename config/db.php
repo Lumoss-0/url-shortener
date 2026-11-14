@@ -2,34 +2,41 @@
 // Файл: config/db.php
 // Подключение к базе данных SQLite через PDO
 
-// В Docker база хранится в постоянном томе; локально — в корне проекта.
-$dbFile = getenv('DB_PATH') ?: __DIR__ . '/../database.sqlite';
-
-// Формируем строку подключения (DSN) для SQLite
+$dbFile = __DIR__ . '/../database.sqlite';
 $dsn = 'sqlite:' . $dbFile;
 
 $options = [
-    // При ошибках БД выбрасывать исключения
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    // Возвращать данные в виде ассоциативного массива
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    // Отключаем эмуляцию подготовленных запросов
     PDO::ATTR_EMULATE_PREPARES   => false,
 ];
 
 try {
-    // Создаём подключение к файлу базы данных SQLite
     $pdo = new PDO($dsn, null, null, $options);
 
-    // Автоматически создаём таблицу links, если база только что создана
+    // 1. Создаём таблицу links (с полем clicks), если база создаётся с нуля
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS links (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             original_url TEXT NOT NULL,
             short_code TEXT NOT NULL UNIQUE,
+            clicks INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
     ");
+
+    // 2. Если таблица была создана раньше без колонки clicks — автоматически добавляем её
+    $columns = $pdo->query("PRAGMA table_info(links)")->fetchAll();
+    $hasClicks = false;
+    foreach ($columns as $col) {
+        if ($col['name'] === 'clicks') {
+            $hasClicks = true;
+            break;
+        }
+    }
+    if (!$hasClicks) {
+        $pdo->exec("ALTER TABLE links ADD COLUMN clicks INTEGER NOT NULL DEFAULT 0");
+    }
 } catch (PDOException $e) {
     die('Ошибка подключения к базе данных SQLite: ' . htmlspecialchars($e->getMessage()));
 }
