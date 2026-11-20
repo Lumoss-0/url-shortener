@@ -1,9 +1,12 @@
 <?php
 // Файл: redirect.php
-// Обработка перехода по короткой ссылке и подсчёт кликов
+// Обработка перехода по короткой ссылке, подсчёт кликов и логирование
 
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/includes/security.php';
 require_once __DIR__ . '/includes/functions.php';
+
+applySecurityHeaders();
 
 $code = trim($_GET['code'] ?? '');
 
@@ -13,17 +16,18 @@ if ($code === '') {
     exit;
 }
 
-$originalUrl = getOriginalUrl($pdo, $code);
+$pdo = getDbConnection();
+$originalUrl = getActiveOriginalUrl($pdo, $code);
 
 if ($originalUrl !== null) {
-    // Увеличиваем счётчик переходов по этой ссылке на +1
     incrementClicks($pdo, $code);
+    writeLog($pdo, 'redirect', 'Переход по /' . $code, getClientIp());
 
-    // Перенаправляем пользователя на исходный адрес
     header('Location: ' . $originalUrl, true, 302);
     exit;
 }
 
+writeLog($pdo, 'not_found', 'Запрос несуществующей или отключённой ссылки /' . $code, getClientIp());
 http_response_code(404);
 require __DIR__ . '/404.php';
 exit;

@@ -10,7 +10,7 @@
 docker compose up --build -d
 ```
 
-Откройте [http://localhost:8000](http://localhost:8000).
+Откройте [http://localhost:8080](http://localhost:8080).
 
 SQLite-файл хранится в Docker volume и сохраняется после остановки контейнера. Остановить приложение:
 

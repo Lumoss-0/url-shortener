@@ -1,11 +1,18 @@
 RewriteEngine On
 
-# Если запрашиваемый файл или папка реально существуют — открываем их напрямую
+# Запрещаем прямой доступ к служебным файлам и папкам
+RewriteRule ^(config|includes)/ - [F,L]
+RewriteRule \.(sqlite|sql|md|yaml|yml)$ - [F,L]
+
+# Маршруты админ-панели
+RewriteRule ^admin/login/?$ admin_login.php [L,QSA]
+RewriteRule ^admin/?$ admin.php [L,QSA]
+
+# Если файл или папка реально существуют — открываем напрямую
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 
-# Иначе передаём путь как параметр code в файл redirect.php
+# Иначе передаём путь как короткий код в redirect.php
 RewriteRule ^([a-zA-Z0-9_-]+)$ redirect.php?code=$1 [L,QSA]
 
-# Если введён адрес с недопустимыми символами, который не существует — показываем 404
 ErrorDocument 404 /404.php

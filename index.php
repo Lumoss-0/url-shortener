@@ -1,9 +1,18 @@
 <?php
 // Файл: index.php
-// Главная страница: форма, QR-код и таблица последних ссылок с аналитикой кликов
+// Главная страница: форма с CSRF-защитой, QR-код и личная история ссылок
 
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/includes/security.php';
 require_once __DIR__ . '/includes/functions.php';
+
+applySecurityHeaders();
+startSecureSession();
+
+$pdo = getDbConnection();
+$ownerToken = getOrCreateOwnerToken();
+$csrfToken = getCsrfToken();
+$baseUrl = getBaseUrl();
 
 $error = null;
 $shortUrl = null;
@@ -11,19 +20,20 @@ $originalUrl = '';
 $customCode = '';
 $finalCode = '';
 
-// Определяем базовый адрес сайта (корректно работает и локально, и на Render через HTTPS)
-$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-    or (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
-$protocol = $isHttps ? 'https' : 'http';
-$host = $_SERVER['HTTP_HOST'] ?? 'localhost:8000';
-$baseUrl = $protocol . '://' . $host;
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $originalUrl = trim($_POST['url'] ?? '');
     $customCode  = trim($_POST['custom_code'] ?? '');
+    $postedToken = $_POST['csrf_token'] ?? null;
 
-    $error = validateUrl($originalUrl);
+    // 1. Проверяем CSRF-токен формы
+    if (!verifyCsrfToken(is_string($postedToken) ? $postedToken : null)) {
+        $error = 'Ошибка безопасности (неверный CSRF-токен). Обновите страницу и попробуйте снова.';
+    } else {
+        // 2. Проверяем корректность длинной ссылки
+        $error = validateUrl($originalUrl);
+    }
 
+    // 3. Проверяем псевдоним или генерируем код через uniqid()
     if ($error === null) {
         if ($customCode !== '') {
             $error = validateCustomCode($customCode);
@@ -34,15 +44,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $finalCode = $customCode;
         } else {
-            $finalCode = generateUniqueCode($pdo, 6);
+            $finalCode = generateUniqueCode($pdo, SHORT_CODE_LENGTH);
         }
     }
 
+    // 4. Сохраняем ссылку и записываем событие в лог
     if ($error === null) {
         try {
-            saveLink($pdo, $originalUrl, $finalCode);
-            $shortUrl = $baseUrl . '/' . $finalCode;
+            $clientIp = getClientIp();
+            saveLink($pdo, $originalUrl, $finalCode, $ownerToken, $clientIp);
+            writeLog($pdo, 'link_created', 'Создана ссылка /' . $finalCode . ' -> ' . $originalUrl, $clientIp);
 
+            $shortUrl = $baseUrl . '/' . $finalCode;
             $originalUrl = '';
             $customCode = '';
         } catch (PDOException $e) {
@@ -51,8 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Получаем последние 5 ссылок из базы данных для отображения в таблице
-$recentLinks = getRecentLinks($pdo, 5);
+// Загружаем только ссылки, созданные в этом браузере (приватный список)
+$recentLinks = getRecentLinksByOwner($pdo, $ownerToken, RECENT_LINKS_LIMIT);
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -81,32 +94,30 @@ $recentLinks = getRecentLinks($pdo, 5);
 
             <?php if ($error !== null): ?>
                 <div class="alert alert-error">
-                    <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
+                    <?= e($error) ?>
                 </div>
             <?php endif; ?>
 
             <?php if ($shortUrl !== null): ?>
                 <?php
-                // Формируем ссылку на генерацию QR-кода (размер 140x140 пикселей)
                 $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=6&data=' . urlencode($shortUrl);
                 ?>
                 <div class="alert alert-success">
                     <p class="result-label">&#10024; Ваша короткая ссылка готова:</p>
                     <div class="result-box">
-                        <a href="<?= htmlspecialchars($shortUrl, ENT_QUOTES, 'UTF-8') ?>" 
-                           target="_blank" 
-                           id="short-url-link" 
+                        <a href="<?= e($shortUrl) ?>"
+                           target="_blank"
+                           id="short-url-link"
                            class="short-link">
-                            <?= htmlspecialchars($shortUrl, ENT_QUOTES, 'UTF-8') ?>
+                            <?= e($shortUrl) ?>
                         </a>
-                        <button type="button" id="copy-btn" class="btn-secondary" data-url="<?= htmlspecialchars($shortUrl, ENT_QUOTES, 'UTF-8') ?>">
+                        <button type="button" id="copy-btn" class="btn-secondary" data-url="<?= e($shortUrl) ?>">
                             Копировать
                         </button>
                     </div>
 
-                    <!-- Блок с QR-кодом -->
                     <div class="qr-box">
-                        <img src="<?= htmlspecialchars($qrCodeUrl, ENT_QUOTES, 'UTF-8') ?>" alt="QR-код ссылки" class="qr-image" width="110" height="110">
+                        <img src="<?= e($qrCodeUrl) ?>" alt="QR-код ссылки" class="qr-image" width="110" height="110">
                         <div class="qr-info">
                             <strong>QR-код для телефона</strong>
                             <span>Наведите камеру смартфона, чтобы мгновенно открыть эту ссылку.</span>
@@ -116,29 +127,34 @@ $recentLinks = getRecentLinks($pdo, 5);
             <?php endif; ?>
 
             <form method="POST" action="/" novalidate>
+                <!-- Скрытое поле с CSRF-токеном для защиты от подделки запросов -->
+                <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+
                 <div class="form-group">
                     <label for="url">Длинная ссылка <span class="required">*</span></label>
-                    <input 
-                        type="url" 
-                        id="url" 
-                        name="url" 
-                        placeholder="https://example.com/very/long/address" 
-                        value="<?= htmlspecialchars($originalUrl, ENT_QUOTES, 'UTF-8') ?>" 
+                    <input
+                        type="url"
+                        id="url"
+                        name="url"
+                        placeholder="https://example.com/very/long/address"
+                        value="<?= e($originalUrl) ?>"
                         required
                     >
                 </div>
 
                 <div class="form-group">
                     <label for="custom_code">Свой псевдоним <span class="optional">(необязательно)</span></label>
-                    <input 
-                        type="text" 
-                        id="custom_code" 
-                        name="custom_code" 
-                        placeholder="Например: my-project_2026" 
-                        value="<?= htmlspecialchars($customCode, ENT_QUOTES, 'UTF-8') ?>"
-                        maxlength="50"
+                    <input
+                        type="text"
+                        id="custom_code"
+                        name="custom_code"
+                        placeholder="Например: my-project_2026"
+                        value="<?= e($customCode) ?>"
+                        maxlength="<?= MAX_CUSTOM_CODE_LENGTH ?>"
                     >
-                    <small class="hint">Разрешены латинские буквы, цифры, дефис (-) и подчёркивание (_), от 3 до 50 символов.</small>
+                    <small class="hint">
+                        Разрешены латинские буквы, цифры, дефис (-) и подчёркивание (_), от <?= MIN_CUSTOM_CODE_LENGTH ?> до <?= MAX_CUSTOM_CODE_LENGTH ?> символов.
+                    </small>
                 </div>
 
                 <button type="submit" class="btn-primary">
@@ -148,28 +164,27 @@ $recentLinks = getRecentLinks($pdo, 5);
                 </button>
             </form>
 
-            <!-- Секция недавно созданных ссылок и статистики кликов -->
             <?php if (!empty($recentLinks)): ?>
                 <div class="recent-section">
                     <div class="recent-header">
-                        <h2>Недавние ссылки</h2>
-                        <span class="recent-note">Обновите страницу после клика, чтобы увидеть рост счётчика</span>
+                        <h2>Мои недавние ссылки</h2>
+                        <span class="recent-note">Приватный список — виден только в вашем браузере</span>
                     </div>
                     <div class="recent-list">
                         <?php foreach ($recentLinks as $item): ?>
                             <?php $itemShortUrl = $baseUrl . '/' . $item['short_code']; ?>
                             <div class="recent-item">
                                 <div class="recent-links-col">
-                                    <a href="<?= htmlspecialchars($itemShortUrl, ENT_QUOTES, 'UTF-8') ?>" target="_blank" class="recent-short">
-                                        /<?= htmlspecialchars($item['short_code'], ENT_QUOTES, 'UTF-8') ?>
+                                    <a href="<?= e($itemShortUrl) ?>" target="_blank" class="recent-short">
+                                        /<?= e($item['short_code']) ?>
                                     </a>
-                                    <span class="recent-original" title="<?= htmlspecialchars($item['original_url'], ENT_QUOTES, 'UTF-8') ?>">
-                                        <?= htmlspecialchars($item['original_url'], ENT_QUOTES, 'UTF-8') ?>
+                                    <span class="recent-original" title="<?= e($item['original_url']) ?>">
+                                        <?= e($item['original_url']) ?>
                                     </span>
                                 </div>
                                 <div class="recent-stats-col">
                                     <span class="clicks-badge" title="Количество переходов по ссылке">
-                                        &#128065; <?= (int)$item['clicks'] ?> кликов
+                                        &#128065; <?= (int)$item['clicks'] ?>
                                     </span>
                                 </div>
                             </div>

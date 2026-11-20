@@ -1,6 +1,8 @@
 <?php
 // Файл: includes/functions.php
-// Основные функции для проверки данных, генерации кодов и работы с БД
+// Функции валидации, генерации кодов, работы со ссылками и логами
+
+require_once __DIR__ . '/../config/config.php';
 
 /**
  * 1. Проверка корректности длинного URL
@@ -11,8 +13,8 @@ function validateUrl(string $url): ?string
         return 'Пожалуйста, введите ссылку для сокращения.';
     }
 
-    if (strlen($url) > 2048) {
-        return 'Ссылка слишком длинная (максимум 2048 символов).';
+    if (strlen($url) > MAX_URL_LENGTH) {
+        return 'Ссылка слишком длинная (максимум ' . MAX_URL_LENGTH . ' символов).';
     }
 
     if (!filter_var($url, FILTER_VALIDATE_URL)) {
@@ -33,15 +35,11 @@ function validateUrl(string $url): ?string
 function validateCustomCode(string $code): ?string
 {
     $length = strlen($code);
-    if ($length < 3 or $length > 50) {
-        return 'Псевдоним должен содержать от 3 до 50 символов.';
+    if ($length < MIN_CUSTOM_CODE_LENGTH or $length > MAX_CUSTOM_CODE_LENGTH) {
+        return 'Псевдоним должен содержать от ' . MIN_CUSTOM_CODE_LENGTH . ' до ' . MAX_CUSTOM_CODE_LENGTH . ' символов.';
     }
 
-    $reservedWords = [
-        'index.php', 'redirect.php', '404.php', 'router.php',
-        'database.sqlite', 'database.sql', 'assets', 'config', 'includes'
-    ];
-    if (in_array(strtolower($code), $reservedWords, true)) {
+    if (in_array(strtolower($code), RESERVED_SHORT_CODES, true)) {
         return 'Этот псевдоним зарезервирован системой. Выберите другой.';
     }
 
@@ -54,11 +52,17 @@ function validateCustomCode(string $code): ?string
 
 /**
  * 3. Проверка: занят ли уже короткий код в базе данных
+ * Параметр $excludeId нужен при редактировании ссылки в админке
  */
-function isCodeTaken(PDO $pdo, string $code): bool
+function isCodeTaken(PDO $pdo, string $code, ?int $excludeId = null): bool
 {
-    $stmt = $pdo->prepare('SELECT id FROM links WHERE short_code = ? LIMIT 1');
-    $stmt->execute([$code]);
+    if ($excludeId !== null) {
+        $stmt = $pdo->prepare('SELECT id FROM links WHERE short_code = ? AND id != ? LIMIT 1');
+        $stmt->execute([$code, $excludeId]);
+    } else {
+        $stmt = $pdo->prepare('SELECT id FROM links WHERE short_code = ? LIMIT 1');
+        $stmt->execute([$code]);
+    }
 
     return (bool)$stmt->fetch();
 }
@@ -66,7 +70,7 @@ function isCodeTaken(PDO $pdo, string $code): bool
 /**
  * 4. Генерация уникального кода с помощью встроенной функции uniqid()
  */
-function generateUniqueCode(PDO $pdo, int $length = 6): string
+function generateUniqueCode(PDO $pdo, int $length = SHORT_CODE_LENGTH): string
 {
     do {
         $code = substr(uniqid(), -$length);
@@ -76,20 +80,27 @@ function generateUniqueCode(PDO $pdo, int $length = 6): string
 }
 
 /**
- * 5. Сохранение новой ссылки в базу данных
+ * 5. Сохранение новой ссылки с привязкой к токену владельца и IP
  */
-function saveLink(PDO $pdo, string $originalUrl, string $shortCode): bool
-{
-    $stmt = $pdo->prepare('INSERT INTO links (original_url, short_code) VALUES (?, ?)');
-    return $stmt->execute([$originalUrl, $shortCode]);
+function saveLink(
+    PDO $pdo,
+    string $originalUrl,
+    string $shortCode,
+    string $ownerToken,
+    string $creatorIp
+): bool {
+    $stmt = $pdo->prepare(
+        'INSERT INTO links (original_url, short_code, owner_token, creator_ip) VALUES (?, ?, ?, ?)'
+    );
+    return $stmt->execute([$originalUrl, $shortCode, $ownerToken, $creatorIp]);
 }
 
 /**
- * 6. Поиск исходной (длинной) ссылки по короткому коду
+ * 6. Поиск активной ссылки по короткому коду (отключённые админом ссылки не возвращаются)
  */
-function getOriginalUrl(PDO $pdo, string $shortCode): ?string
+function getActiveOriginalUrl(PDO $pdo, string $shortCode): ?string
 {
-    $stmt = $pdo->prepare('SELECT original_url FROM links WHERE short_code = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT original_url FROM links WHERE short_code = ? AND is_active = 1 LIMIT 1');
     $stmt->execute([$shortCode]);
     $row = $stmt->fetch();
 
@@ -106,13 +117,46 @@ function incrementClicks(PDO $pdo, string $shortCode): void
 }
 
 /**
- * 8. Получение последних созданных ссылок для таблицы истории
+ * 8. Получение последних ссылок ТОЛЬКО текущего владельца (по его cookie-токену)
  */
-function getRecentLinks(PDO $pdo, int $limit = 5): array
+function getRecentLinksByOwner(PDO $pdo, string $ownerToken, int $limit = RECENT_LINKS_LIMIT): array
 {
-    $stmt = $pdo->prepare('SELECT original_url, short_code, clicks, created_at FROM links ORDER BY id DESC LIMIT ?');
-    $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+    $stmt = $pdo->prepare(
+        'SELECT original_url, short_code, clicks, is_active, created_at
+         FROM links
+         WHERE owner_token = ?
+         ORDER BY id DESC
+         LIMIT ?'
+    );
+    $stmt->bindValue(1, $ownerToken, PDO::PARAM_STR);
+    $stmt->bindValue(2, $limit, PDO::PARAM_INT);
     $stmt->execute();
 
     return $stmt->fetchAll();
+}
+
+/**
+ * 9. Запись события в журнал логов (таблица logs)
+ */
+function writeLog(PDO $pdo, string $eventType, string $message, string $ipAddress): void
+{
+    $stmt = $pdo->prepare('INSERT INTO logs (event_type, message, ip_address) VALUES (?, ?, ?)');
+    $stmt->execute([$eventType, $message, $ipAddress]);
+}
+
+/**
+ * 10. Перевод даты/времени из UTC (как хранит SQLite) в часовой пояс из APP_TIMEZONE
+ */
+function formatDateTime(string $utcDateTime): string
+{
+    if ($utcDateTime === '') {
+        return '—';
+    }
+
+    try {
+        $dt = new DateTimeImmutable($utcDateTime, new DateTimeZone('UTC'));
+        return $dt->setTimezone(new DateTimeZone(APP_TIMEZONE))->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
+        return $utcDateTime;
+    }
 }

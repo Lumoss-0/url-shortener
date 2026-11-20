@@ -1,8 +1,27 @@
--- Файл: database.sql (для SQLite)
+-- Файл: database.sql (схема базы данных SQLite)
+
 CREATE TABLE IF NOT EXISTS links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     original_url TEXT NOT NULL,
     short_code TEXT NOT NULL UNIQUE,
     clicks INTEGER NOT NULL DEFAULT 0,
+    owner_token TEXT NOT NULL DEFAULT '',
+    creator_ip TEXT NOT NULL DEFAULT '',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    ip_address TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS admins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

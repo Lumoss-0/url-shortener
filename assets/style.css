@@ -461,3 +461,342 @@ input[type="text"]:focus {
     border-radius: 999px;
     white-space: nowrap;
 }
+
+/* ============================================
+   Стили административной панели (/admin)
+   ============================================ */
+
+.admin-body {
+    align-items: flex-start;
+    padding-top: 32px;
+    padding-bottom: 40px;
+}
+
+.container-wide {
+    max-width: 1080px;
+}
+
+.admin-card {
+    padding: 30px;
+}
+
+.admin-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1.5px solid #e2e8f0;
+}
+
+.admin-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-back-link {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #4f46e5;
+    text-decoration: none;
+}
+
+.admin-back-link:hover {
+    text-decoration: underline;
+}
+
+.inline-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-danger-outline {
+    padding: 9px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #dc2626;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-danger-outline:hover {
+    background-color: #dc2626;
+    color: #ffffff;
+    border-color: #dc2626;
+}
+
+/* Сводные карточки статистики */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.stat-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stat-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+/* Вкладки админки */
+.admin-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 1.5px solid #e2e8f0;
+    padding-bottom: 12px;
+}
+
+.tab-btn {
+    padding: 9px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #475569;
+    background: #f1f5f9;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.tab-btn.active {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    color: #ffffff;
+}
+
+/* Панель редактирования ссылки */
+.edit-panel {
+    background: #f8fafc;
+    border: 1.5px solid #c7d2fe;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.edit-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.edit-panel-header h2 {
+    font-size: 16px;
+    color: #1e293b;
+}
+
+.edit-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 14px;
+}
+
+.edit-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* Поиск и фильтры */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.filter-bar input[type="text"] {
+    flex: 1;
+    min-width: 220px;
+    padding: 10px 14px;
+}
+
+.admin-select {
+    padding: 9px 14px;
+    font-size: 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #0f172a;
+    outline: none;
+}
+
+/* Таблицы */
+.table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    background: #ffffff;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.admin-table th {
+    background: #f8fafc;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    font-weight: 700;
+}
+
+.admin-table tr:last-child td {
+    border-bottom: none;
+}
+
+.url-cell {
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #334155;
+}
+
+.meta-cell {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.status-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-disabled {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.actions-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.btn-mini {
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.btn-mini:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.btn-mini-danger {
+    color: #b91c1c;
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.btn-mini-danger:hover {
+    background: #dc2626;
+    color: #ffffff;
+    border-color: #dc2626;
+}
+
+.log-badge {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #eef2ff;
+    color: #3730a3;
+    white-space: nowrap;
+}
+
+.log-not_found,
+.log-admin_login_failed,
+.log-admin_delete {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.log-link_created,
+.log-admin_login {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 32px;
+    color: #64748b;
+    font-size: 14px;
+}
+
+@media (max-width: 720px) {
+    .edit-grid {
+        grid-template-columns: 1fr;
+    }
+}
